@@ -1,3 +1,4 @@
+//go:build matprofile
 // +build matprofile
 
 package gocv
@@ -50,6 +51,11 @@ import (
 // For more information, see the runtime/pprof package documentation.
 var MatProfile *pprof.Profile
 
+var (
+	memoryFreeChan []C.Mat
+	lock           sync.Mutex
+)
+
 func init() {
 	profName := "gocv.io/x/gocv.Mat"
 	MatProfile = pprof.Lookup(profName)
@@ -80,4 +86,21 @@ func (m *Mat) Close() error {
 	m.p = nil
 	m.d = nil
 	return nil
+}
+
+func (m *Mat) AddToReleaseChan() {
+	lock.Lock()
+	defer lock.Unlock()
+	memoryFreeChan = append(memoryFreeChan, ptr)
+	return
+}
+
+func (m *Mat) ReleaseAll() {
+	lock.Lock()
+	defer lock.Unlock()
+	for _, p := range memoryFreeChan {
+		gocv.MatProfile.Remove(p)
+		C.Mat_Close(p)
+	}
+	memoryFreeChan = []C.Mat{}
 }
